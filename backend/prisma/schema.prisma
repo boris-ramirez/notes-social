@@ -18,11 +18,13 @@ model User {
 }
 
 model Post {
-  id        String  @id @default(uuid())
+  id        String   @id @default(uuid())
   title     String
   content   String
   createdAt DateTime @default(now())
   authorId  String
-  author    User @relation(fields: [authorId], references: [id])
+  isPublic  Boolean  @default(false) // 🚀 Nuevo campo para determinar visibilidad
+  author    User     @relation(fields: [authorId], references: [id])
 }
+
 

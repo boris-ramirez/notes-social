@@ -4,12 +4,21 @@ const { PrismaClient } = require("@prisma/client");
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Obtener todos los posts
+// Obtener posts públicos y privados (según el usuario autenticado)
 router.get("/", async (req, res) => {
   try {
+    const userId = req.user?.id;
+
     const posts = await prisma.post.findMany({
-      include: { author: true }, // Incluir info del autor
+      where: {
+        OR: [
+          { isPublic: true }, // 🔓 Posts públicos visibles para todos
+          { authorId: userId }, // 🔒 Posts privados visibles solo para el autor
+        ],
+      },
+      include: { author: true },
     });
+
     res.json(posts);
   } catch (error) {
     console.error("Error al obtener posts:", error);
@@ -17,24 +26,18 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Crear un nuevo post
+// Crear un nuevo post (Público o Privado)
 router.post("/", async (req, res) => {
   try {
-    const { title, content, authorId } = req.body;
+    const { title, content, isPublic } = req.body;
+    const authorId = req.user?.id;
 
-    if (!title || !content || !authorId) {
+    if (!title || !content || authorId === undefined) {
       return res.status(400).json({ error: "Faltan campos requeridos" });
     }
 
     const post = await prisma.post.create({
-      data: {
-        title,
-        content,
-        author: {
-          connect: { id: authorId }, // Conectamos con el usuario existente
-        },
-      },
-      include: { author: true },
+      data: { title, content, isPublic, authorId },
     });
 
     res.status(201).json(post);

@@ -10,13 +10,12 @@ require("dotenv").config();
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// 🔥 **Configurar Google OAuth**
 passport.use(
   new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: "http://localhost:5000/auth/google/callback", // 🔹 Asegúrate de que este URL coincida en Google Console
+      callbackURL: "http://localhost:5000/auth/google/callback",
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -42,22 +41,19 @@ passport.use(
   )
 );
 
-// 🔹 **Ruta para redirigir a Google OAuth**
 router.get(
   "/google",
   passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
-// 🔹 **Ruta de callback después de autenticación con Google**
 router.get(
   "/google/callback",
   passport.authenticate("google", {
-    successRedirect: "http://localhost:3000/dashboard", // 🔹 Redirigir al frontend
+    successRedirect: "http://localhost:3000/dashboard",
     failureRedirect: "http://localhost:3000/login",
   })
 );
 
-// 🔥 **Serializar y deserializar usuario**
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
   try {
@@ -71,13 +67,20 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// 🔥 **Estrategia de autenticación local**
 passport.use(
   new LocalStrategy(
     { usernameField: "email" },
     async (email, password, done) => {
       const user = await prisma.user.findUnique({ where: { email } });
+
       if (!user) return done(null, false, { message: "Usuario no encontrado" });
+
+      if (!user.password) {
+        return done(null, false, {
+          message:
+            "Este usuario no tiene contraseña. Inicia sesión con Google.",
+        });
+      }
 
       const validPassword = await bcrypt.compare(password, user.password);
       if (!validPassword)
@@ -88,7 +91,6 @@ passport.use(
   )
 );
 
-// 🔹 **Ruta de registro de usuario**
 router.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -103,12 +105,10 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// 🔹 **Ruta de inicio de sesión local**
 router.post("/login", passport.authenticate("local"), (req, res) => {
-  res.json(req.user);
+  res.json({ success: true, user: req.user });
 });
 
-// 🔹 **Ruta para obtener usuario autenticado**
 router.get("/user", (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: "No autenticado" });
@@ -116,9 +116,33 @@ router.get("/user", (req, res) => {
   res.json(req.user);
 });
 
-// 🔹 **Ruta de logout**
 router.get("/logout", (req, res) => {
   req.logout(() => res.json({ message: "Sesión cerrada" }));
+});
+
+router.post("/set-password", async (req, res) => {
+  const { email, password } = req.body;
+
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+  if (user.password) {
+    return res
+      .status(400)
+      .json({ error: "Este usuario ya tiene una contraseña establecida." });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  await prisma.user.update({
+    where: { email },
+    data: { password: hashedPassword },
+  });
+
+  res.json({
+    message:
+      "Contraseña establecida correctamente. Ahora puedes iniciar sesión con tu correo y contraseña.",
+  });
 });
 
 module.exports = router;
